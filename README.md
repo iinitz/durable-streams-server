@@ -24,11 +24,29 @@ able to name the exact build it is going back to.
 ## Run it
 
 ```bash
-docker run -d -p 4437:4437 -v durable-streams:/data iinitz/durable-streams-server:0.3.0
+docker run -d -p 4437:4437 -e DS_TOKEN=some-secret -v durable-streams:/data \
+  iinitz/durable-streams-server:0.3.0
 ```
 
 Storage is file-backed (LMDB) under `/data`. Mount a volume or the streams are
 only as durable as the container, which defeats the point.
+
+## DS_TOKEN is required
+
+Every request must carry `Authorization: Bearer $DS_TOKEN`, the same way the
+sandbox executor gates `/execute`. `@tanstack/ai-durable-stream` sends whatever
+`DURABLE_STREAMS_TOKEN` holds, so the two values must match.
+
+It **fails closed**: leave `DS_TOKEN` unset and the matcher looks for a bare
+`Bearer `, so every request is refused. That is deliberate — a stream server
+that quietly accepts anything is worse than one that refuses everything.
+
+Two Caddy details worth keeping if you edit the config. The plugin is not part
+of Caddy's built-in directive order, so it needs the `order` global option (or a
+`route` block) or the server will not start at all — it says so plainly on
+stderr. And the gate uses `handle`, not a bare `respond`: top-level directives
+are sorted by Caddy's order rather than file order, so a bare `respond` runs
+*after* the route and lets every request through, silently and with no error.
 
 ## The route is `/streams/*`, not the upstream's `/v1/stream/*`
 
@@ -48,9 +66,12 @@ Kubernetes scores that as a failure. Prove the store answers instead:
 ```yaml
 readinessProbe:
   exec:
-    command: ["sh", "-c", "curl -s -o /dev/null -w '%{http_code}' http://localhost:4437/streams/_probe | grep -q 404"]
+    command: ["sh", "-c", "curl -s -o /dev/null -w '%{http_code}' -H \"Authorization: Bearer $DS_TOKEN\" http://localhost:4437/streams/_probe | grep -q 404"]
   periodSeconds: 5
 ```
+
+The header matters: without it the probe gets `401`, which proves only that
+Caddy is up — not that the store has finished loading, which is the whole point.
 
 `curl` is in the image for this.
 
@@ -71,5 +92,7 @@ reference implementation. Only the plain ones are relevant here.
 
 Against v0.3.0 (Caddy v2.10.2), file-backed on a mounted volume: records survive
 a graceful restart and a `SIGKILL`, and older streams are untouched by either.
+The bearer gate answers `401` to a missing or wrong token and `201`/`200` to
+writes carrying the right one.
 Measure with the server given time to become ready first — reading too early
 reports losses that have not happened.
