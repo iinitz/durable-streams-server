@@ -1,0 +1,17 @@
+{
+	admin off
+}
+
+# The route path IS the client's path — the plugin takes the stream identity
+# straight from r.URL.Path with no prefix stripping. `@tanstack/ai-durable-stream`
+# addresses `<server>/streams/<name>`, so this must be `/streams/*`. The upstream
+# README's example uses `/v1/stream/*`, which silently matches nothing here.
+:4437 {
+	route /streams/* {
+		durable_streams {
+			# File-backed (LMDB). Omit this and storage is in-memory, which
+			# forgets every run the moment the pod moves.
+			data_dir /data
+		}
+	}
+}
