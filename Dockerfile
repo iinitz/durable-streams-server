@@ -12,6 +12,9 @@
 # store has finished loading. A read in that window returns no data and a write
 # can be reset. Give the pod a readiness probe that proves the STORE answers,
 # not just that the socket is up.
+#
+# Auth is opt-in — see entrypoint.sh. DS_TOKEN set requires it, unset serves
+# openly, so a client can get by with only a URL.
 FROM debian:12-slim
 
 # Supplied by buildx per platform — `amd64` / `arm64`, which is exactly how the
@@ -37,7 +40,10 @@ RUN set -eux; \
     rm -f "/tmp/${file}" /tmp/checksums.txt; \
     durable-streams-server version
 
-COPY Caddyfile /etc/caddy/Caddyfile
+# Two configs, and an entrypoint that picks one: DS_TOKEN set means auth is
+# required, unset means the server is open and a client needs only the URL.
+COPY Caddyfile Caddyfile.auth /etc/caddy/
+COPY entrypoint.sh /entrypoint.sh
 
 # Streams live here. Mount a volume or the data is only as durable as the
 # container, which defeats the point of running this at all.
@@ -45,4 +51,4 @@ VOLUME ["/data"]
 
 EXPOSE 4437
 
-CMD ["durable-streams-server", "run", "--config", "/etc/caddy/Caddyfile"]
+ENTRYPOINT ["/entrypoint.sh"]

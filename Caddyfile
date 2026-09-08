@@ -2,27 +2,11 @@
 	admin off
 
 	# The plugin is not part of Caddy's built-in directive order, so it may only
-	# appear inside a `route` unless it is given a position. Giving it one lets
-	# the auth gate below use `handle` blocks, which are mutually exclusive and
-	# run in the order written.
+	# appear inside a `route` unless it is given a position.
 	order durable_streams before respond
 }
 
 :4437 {
-	# Bearer auth, mirroring how the sandbox executor gates /execute. The token
-	# comes from DS_TOKEN in the environment and is substituted when the config
-	# is parsed, so an unset token leaves the matcher looking for a bare
-	# "Bearer " and every request is refused: this FAILS CLOSED on purpose.
-	# `@tanstack/ai-durable-stream` sends whatever DURABLE_STREAMS_TOKEN holds
-	# as `Authorization: Bearer <token>`, so the two values must match.
-	# `handle`, not a bare `respond`: Caddy sorts top-level directives by its own
-	# order rather than file order, so a bare respond runs after the route and
-	# the gate never fires — it lets every request through, silently.
-	@unauthorized not header Authorization "Bearer {$DS_TOKEN}"
-	handle @unauthorized {
-		respond 401
-	}
-
 	# The route path IS the client's path — the plugin takes the stream identity
 	# straight from r.URL.Path with no prefix stripping. The client addresses
 	# `<server>/streams/<name>`, so this must be `/streams/*`. The upstream

@@ -1,0 +1,28 @@
+{
+	admin off
+
+	# The plugin is not part of Caddy's built-in directive order, so it may only
+	# appear inside a `route` unless it is given a position. Giving it one lets
+	# the gate below use `handle`, which runs in the order written.
+	order durable_streams before respond
+}
+
+:4437 {
+	# Bearer auth, mirroring how the sandbox executor gates /execute.
+	# `@tanstack/ai-durable-stream` sends DURABLE_STREAMS_TOKEN as
+	# `Authorization: Bearer <token>`, so the two values must match.
+	#
+	# `handle`, not a bare `respond`: top-level directives run in Caddy's sorted
+	# order rather than file order, so a bare respond fires AFTER the route and
+	# lets every request through — silently, with a 200 and no error.
+	@unauthorized not header Authorization "Bearer {$DS_TOKEN}"
+	handle @unauthorized {
+		respond 401
+	}
+
+	handle /streams/* {
+		durable_streams {
+			data_dir /data
+		}
+	}
+}
